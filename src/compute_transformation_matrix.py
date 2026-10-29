@@ -2,6 +2,25 @@ from dataclasses import dataclass
 from math import sin, cos
 
 
+@dataclass
+class Pose:
+    """
+    Represents a 6-DOF vehicle pose in the local NED frame.
+    (NED represents x=North, y=easy, z=down)
+    Read more here: https://en.wikipedia.org/wiki/Local_tangent_plane_coordinates
+
+    Position is expressed in meters. Orientation is represented via quaternion.
+    """
+
+    x: float
+    y: float
+    z: float
+    qw: float
+    qx: float
+    qy: float
+    qz: float
+
+
 def rpy_to_quaternion(
     roll: float, pitch: float, yaw: float
 ) -> tuple[float, float, float, float]:
@@ -19,14 +38,14 @@ def rpy_to_quaternion(
 
     Returns
     -------
+    qw
+        Real magnitude
     qx
         Imaginary x vector
     qy
         Imaginary y vector
     qz
         Imaginary z vector
-    qw
-        Real magnitude
 
     Notes
     -----
@@ -41,9 +60,9 @@ def rpy_to_quaternion(
     cy = cos(yaw / 2)
     sy = sin(yaw / 2)
 
+    qw = cr * cp * cy + sr * sp * sy
     qx = sr * cp * cy - cr * sp * sy
     qy = cr * sp * cy + sr * cp * sy
     qz = cr * cp * sy - sr * sp * cy
-    qw = cr * cp * cy + sr * sp * sy
 
-    return qx, qy, qz, qw
+    return qw, qx, qy, qz
