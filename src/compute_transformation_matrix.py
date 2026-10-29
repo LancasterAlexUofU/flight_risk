@@ -3,7 +3,7 @@ from math import sin, cos
 
 
 @dataclass
-class Pose:
+class QPose:
     """
     Represents a 6-DOF vehicle pose in the local NED frame.
     (NED represents x=North, y=easy, z=down)
@@ -19,6 +19,24 @@ class Pose:
     qx: float
     qy: float
     qz: float
+
+
+@dataclass
+class EPose:
+    """
+    Represents a 6-DOF vehicle pose in the local NED frame.
+    (NED represents x=North, y=easy, z=down)
+    Read more here: https://en.wikipedia.org/wiki/Local_tangent_plane_coordinates
+
+    Position is expressed in meters. Orientation is represented via Euler angles.
+    """
+
+    x: float
+    y: float
+    z: float
+    roll: float
+    pitch: float
+    yaw: float
 
 
 def rpy_to_quaternion(
@@ -53,6 +71,7 @@ def rpy_to_quaternion(
     https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
     in section "Angles (in ZYX sequence) to quaternion conversion".
     """
+
     cr = cos(roll / 2)
     sr = sin(roll / 2)
     cp = cos(pitch / 2)
