@@ -1,0 +1,9 @@
+# Handles line endings automatically between Windows and Linux
+* text=auto
+
+# Ignore build and distribution directories
+build/
+dist/
+
+# Ignore egg-info folders anywhere in the project
+**/*.egg-info/

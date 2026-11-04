@@ -1,8 +1,10 @@
 from dataclasses import dataclass
-from math import cos, sin
 
 import numpy as np
 from numpy.typing import NDArray
+from scipy.spatial import KDTree
+from scipy.spatial.transform import RigidTransform as Tf
+from scipy.spatial.transform import Rotation as R
 
 
 @dataclass
@@ -42,167 +44,64 @@ class EPose:
     yaw: float
 
 
-def rpy_to_quaternion(
-    roll: float, pitch: float, yaw: float
-) -> tuple[float, float, float, float]:
+def get_rotation(pose: EPose | QPose) -> R:
+    match pose:
+        case EPose():
+            return R.from_euler("zyx", [pose.yaw, pose.pitch, pose.roll])
+
+        case QPose():
+            return R.from_quat([pose.qx, pose.qy, pose.qz, pose.qw])
+
+
+def get_transformation(pose: EPose | QPose) -> Tf:
+    R = get_rotation(pose)
+    d = np.array([pose.x, pose.y, pose.z])
+
+    return Tf.from_components(d, R)
+
+
+def get_relative_transformation(
+    pose1: EPose | QPose,
+    pose2: EPose | QPose,
+) -> Tf:
     """
-    Converts roll, pitch, and yaw (Euler) angles to quaternions.
-
-    Parameters
-    ----------
-    roll
-        Roll angle in radians
-    pitch
-        Pitch angle in radians
-    yaw
-        Yaw angle in radains
-
-    Returns
-    -------
-    qw
-        Real magnitude
-    qx
-        Imaginary x vector
-    qy
-        Imaginary y vector
-    qz
-        Imaginary z vector
+    Computes relative transformation matrix between two poses.
 
     Notes
     -----
-    Conversion can be found here:
-    https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
-    in section "Angles (in ZYX sequence) to quaternion conversion".
+    If pose1 = B1, and pose2 = B2, then the returned Tf would be read as
+    "Frame B1 expressed in Frame B2."
     """
 
-    cr = cos(roll / 2)
-    sr = sin(roll / 2)
-    cp = cos(pitch / 2)
-    sp = sin(pitch / 2)
-    cy = cos(yaw / 2)
-    sy = sin(yaw / 2)
+    tf1 = get_transformation(pose1)
+    tf2_inv = get_transformation(pose2).inv()
 
-    qw = cr * cp * cy + sr * sp * sy
-    qx = sr * cp * cy - cr * sp * sy
-    qy = cr * sp * cy + sr * cp * sy
-    qz = cr * cp * sy - sr * sp * cy
-
-    return qw, qx, qy, qz
+    return tf2_inv * tf1
 
 
-def get_rotation_matrix(pose: EPose | QPose) -> NDArray[np.float64]:
+def calculate_lower_bound_distance_threshold(linear_velocity, lidar_frequency):
     """
-    Builds 3x3 rotation matrix from a given pose.
-
-    Parameters
-    ----------
-    pose
-        Pose object containing orentation and translation data.
-
-    Returns
-    -------
-    R
-        3x3 Rotation matrix
+    `distance_threshold` must be be strictly greater than the distance the robot
+    travels between consecutive LiDAR scans.
     """
 
-    match pose:
-        case EPose():
-            roll = pose.roll
-            pitch = pose.pitch
-            yaw = pose.yaw
 
-            cr = cos(roll)
-            sr = sin(roll)
-            cp = cos(pitch)
-            sp = sin(pitch)
-            cy = cos(yaw)
-            sy = sin(yaw)
-
-            # Used equation 3.42 from https://msl.cs.uiuc.edu/planning/node102.html
-            R = np.array(
-                [
-                    [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
-                    [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
-                    [-sp, cp * sr, cp * cr],
-                ]
-            )
-
-            return R
-
-        case QPose():
-            raise NotImplementedError
-
-
-def get_transformation_matrix(pose: EPose | QPose) -> NDArray[np.float64]:
-    """
-    Builds 4x4 transformation matrix from a given pose.
-
-    Parameters
-    ----------
-    pose
-        Pose object containing orentation and translation data.
-
-    Returns
-    -------
-    T
-        4x4 Transformation matrix
-    """
-    R = get_rotation_matrix(pose)
-    d = np.array([pose.x, pose.y, pose.z])
-
-    T = np.eye(4)
-    T[:3, :3] = R
-    T[:3, 3] = d
-
-    return T
-
-
-def transformation_matrix_inverse(T: NDArray[np.float64]) -> NDArray[np.float64]:
-    """
-    Computes inverse of transformation matrix without expensive inverse operator.
-
-    Parameters
-    ----------
-    T
-        4x4 Transformation matrix
-
-    Returns
-    -------
-    T_inv
-        4x4 Inverse transformation matrix
-    """
-    R = T[:3, :3]
-    d = T[:3, 3]
-
-    T_inv = np.eye(4)
-    T_inv[:3, :3] = R.T
-    T_inv[:3, 3] = -(R.T @ d)
-
-    return T_inv
-
-
-def get_relative_transformation_matrix(
-    pose1: EPose | QPose,
-    pose2: EPose | QPose,
+def get_nn_points_gated(
+    points_B1: NDArray, points_B2: NDArray, tf_B2_B1: Tf, distance_threshold: float
 ) -> NDArray[np.float64]:
     """
-    Computes relative transformation matrix between two poses
-
-    Parameters
-    ----------
-    pose1
-        Pose object containing orentation and translation data.
-    pose2
-        Different pose object containing orentation and translation data.
-
-    Returns
-    -------
-    T
-        Transformation matrix of pose1 relative to pose2 (i.e. {B2}^T_{B1}).
+    Notes
+    -----
+    Following scipy Tf naming convention:
+    tf_B2_B1 is read frame B1 expressed in frame B2.
     """
+    points_B2_expected = tf_B2_B1.apply(points_B1)
 
-    T1 = get_transformation_matrix(pose1)
-    T2 = get_transformation_matrix(pose2)
-    T2_inv = transformation_matrix_inverse(T2)
+    tree = KDTree(points_B2)
+    distance, index = tree.query(points_B2_expected)
 
-    return T2_inv @ T1
+    threshold_mask = distance <= distance_threshold
+    matched_points_B2_indices_in_threshold = index[threshold_mask]
+    matched_points_B2_in_threshold = points_B2[matched_points_B2_indices_in_threshold]
+
+    return matched_points_B2_in_threshold

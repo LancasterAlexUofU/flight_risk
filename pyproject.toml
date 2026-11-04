@@ -1,0 +1,13 @@
+[project]
+name = "flight_risk"
+version = "1.0"
+dependencies = ["numpy", "scipy"]
+
+[tool.pydocstyle]
+convention = "numpy"
+add-ignore = ["D104"]  # optional: ignore missing docstring in __init__
+
+# Source local env
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
