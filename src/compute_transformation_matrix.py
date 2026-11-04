@@ -88,7 +88,7 @@ def calculate_lower_bound_distance_threshold(linear_velocity, lidar_frequency):
 
 def get_nn_points_gated(
     points_B1: NDArray, points_B2: NDArray, tf_B2_B1: Tf, distance_threshold: float
-) -> NDArray[np.float64]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Notes
     -----
@@ -104,4 +104,6 @@ def get_nn_points_gated(
     matched_points_B2_indices_in_threshold = index[threshold_mask]
     matched_points_B2_in_threshold = points_B2[matched_points_B2_indices_in_threshold]
 
-    return matched_points_B2_in_threshold
+    points_B2_expected_threshold = points_B2_expected[threshold_mask]
+
+    return matched_points_B2_in_threshold, points_B2_expected_threshold
