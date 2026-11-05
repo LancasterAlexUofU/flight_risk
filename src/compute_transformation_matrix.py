@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy.spatial import KDTree
+from scipy.spatial import KDTree, distance
 from scipy.spatial.transform import RigidTransform as Tf
 from scipy.spatial.transform import Rotation as R
 
@@ -107,3 +107,20 @@ def get_nn_points_gated(
     points_B2_expected_threshold = points_B2_expected[threshold_mask]
 
     return matched_points_B2_in_threshold, points_B2_expected_threshold
+
+
+def rsme_error(
+    points_expected: NDArray[np.float64], points_actual: NDArray[np.float64]
+) -> float:
+    mean_squared_distances = np.mean((points_expected - points_actual) ** 2)
+    rsme_error = float(np.sqrt(mean_squared_distances))
+    return rsme_error
+
+def inlier_ratio_test(point_coorespondances: NDArray[np.float64], points_actual: NDArray[np.float64], minimum_inlier_ratio: float) -> bool:
+    """
+    Tests if many coorespondances did not match with the actual scan.
+    """
+    num_coorespondances = point_coorespondances.shape[0]
+    num_actual = points_actual.shape[0]
+
+    return (num_coorespondances / num_actual) > minimum_inlier_ratio
