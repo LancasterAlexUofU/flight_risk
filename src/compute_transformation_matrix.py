@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy.spatial import KDTree, distance
+from scipy.spatial import KDTree
 from scipy.spatial.transform import RigidTransform as Tf
 from scipy.spatial.transform import Rotation as R
 
@@ -90,13 +90,38 @@ def get_nn_points_gated(
     points_B1: NDArray, points_B2: NDArray, tf_B2_B1: Tf, distance_threshold: float
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
+    Parameters
+    ----------
+    points_B1
+        Array of points from B1 scan in state cartesian position (see notes).
+    points_B2
+        Array of points from B2 scan in state cartesian position (see notes).
+    tf_B2_B1
+        Transformation of frame B1 expressed in frame B2.
+    distance_threshold
+        Maximum distance between two points between scans to be considered the same.
+
+    Returns
+    -------
+    matched_points_B2_in_threshold
+        Points in B2 that had a match and were within the distance threshold.
+
     Notes
     -----
     Following scipy Tf naming convention:
-    tf_B2_B1 is read frame B1 expressed in frame B2.
+    `tf_B2_B1` is read frame B1 expressed in frame B2.
+
+    `tf_B2_B1` can be calculated via `get_relative_transformation` function.
+
+    `points_B1` and `points_B2` must be transformed from polar coordinates to lidar
+    cartesian and from lidar position to where the state estimator denotes position.
+
+    `points_B1` and `points_B2` can differ in size.
     """
     points_B2_expected = tf_B2_B1.apply(points_B1)
 
+    # distance: shortest distance of points_B2_expected[i] to point in points_B2
+    # index: index of point in points_B2 that was closest to query point
     tree = KDTree(points_B2)
     distance, index = tree.query(points_B2_expected)
 
@@ -116,7 +141,12 @@ def rsme_error(
     rsme_error = float(np.sqrt(mean_squared_distances))
     return rsme_error
 
-def inlier_ratio_test(point_coorespondances: NDArray[np.float64], points_actual: NDArray[np.float64], minimum_inlier_ratio: float) -> bool:
+
+def inlier_ratio_test(
+    point_coorespondances: NDArray[np.float64],
+    points_actual: NDArray[np.float64],
+    minimum_inlier_ratio: float,
+) -> bool:
     """
     Tests if many coorespondances did not match with the actual scan.
     """
